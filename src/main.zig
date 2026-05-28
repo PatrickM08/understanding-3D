@@ -49,7 +49,26 @@ const MSG = extern struct {
     lPrivate: win.DWORD,
 };
 
-pub fn main() !void {
+// TODO: MAYBE CHANGE THESE NAMES
+fn windowProcedure(window_handle: win.HWND, msg: win.UINT, wParam: usize, lParam: isize) callconv(.winapi) isize {
+    const WM_SIZE: win.UINT = 0x0005;
+    switch (msg) {
+        WM_SIZE => {
+            std.debug.print("HELLO\n", .{});
+            return 0;
+        },
+        else => return DefWindowProcW(window_handle, msg, wParam, lParam),
+    }
+} 
+
+pub fn wWinMain(hInstance: win.HINSTANCE, hPrevInstance: ?win.HINSTANCE, lpCmdLine: win.LPWSTR, nShowCmd: win.INT) win.INT {
+    _ = hPrevInstance;
+    _ = lpCmdLine;
+    main(hInstance, nShowCmd) catch return 1; // TODO: THIS ONLY MATTERS IF I WERE TO ACTUALLY USE THE ERROR UNIONS, SO USELESS CURRENTLY
+    return 0;
+}
+
+fn main(hInstance: win.HINSTANCE, nShowCmd: win.INT) !void {
     const class_name: [*:0] const u16 = utf8ToUtf16("WINDOW CLASS");
     const window_text: [*:0] const u16 = utf8ToUtf16("Zig Window");
     const WS_OVERLAPPED: win.LONG = 0x00000000;
@@ -59,19 +78,18 @@ pub fn main() !void {
     const WS_MINIMIZEBOX: win.LONG = 0x00020000;
     const WS_MAXIMIZEBOX: win.LONG = 0x00010000;
     const WS_OVERLAPPEDWINDOW: win.LONG = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX;
-    std.debug.print("{d}", .{WS_OVERLAPPED + WS_CAPTION});
-    const module_instance: win.HINSTANCE = @ptrCast(GetModuleHandleW(null) orelse return); 
+    const module_instance: win.HINSTANCE = @ptrCast(hInstance); 
 
     var wc: WNDCLASSEXW = std.mem.zeroes(WNDCLASSEXW);
     wc.cbSize = @sizeOf(WNDCLASSEXW);
-    wc.lpfnWndProc = DefWindowProcW;
+    wc.lpfnWndProc = windowProcedure;
     wc.hInstance = module_instance;
     wc.lpszClassName = class_name;
 
     _ = RegisterClassExW(&wc);
     const window_handle: win.HWND = CreateWindowExW(0, class_name, window_text, WS_OVERLAPPEDWINDOW, 100, 100, 800, 600, null, null, module_instance, null) orelse return;
 
-    _ = ShowWindow(window_handle, 5);
+    _ = ShowWindow(window_handle, nShowCmd);
 
     var msg: MSG = std.mem.zeroes(MSG);
     while (GetMessageW(&msg, null, 0, 0) > 0) {

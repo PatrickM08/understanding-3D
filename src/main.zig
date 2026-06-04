@@ -13,11 +13,13 @@ extern "user32" fn CreateWindowExW(dwExStyle: win.DWORD, lpClassName: ?win.LPCWS
 
 extern "user32" fn ShowWindow(hWnd: win.HWND, nCmdShow: win.INT) callconv(.winapi) win.BOOL;
 
-extern "user32" fn GetMessageW(lpMsg: *MSG, hWnd: ?win.HWND, wMsgFilterMin: win.UINT, wMsgFilterMax: win.UINT) callconv(.winapi) win.INT;
+extern "user32" fn PeekMessageW(lpMsg: *MSG, hWnd: ?win.HWND, wMsgFilterMin: win.UINT, wMsgFilterMax: win.UINT, wRemoveMsg: win.UINT) callconv(.winapi) win.INT;
 
 extern "user32" fn TranslateMessage(lpMsg: *const MSG) callconv(.winapi) win.INT;
 
 extern "user32" fn DispatchMessageW(lpMsg: *const MSG) callconv(.winapi) isize;
+
+extern "user32" fn PostQuitMessage(nExitCode: win.INT) callconv(.winapi) void;
  
 const WNDCLASSEXW = extern struct {
     cbSize: win.UINT,
@@ -52,9 +54,13 @@ const MSG = extern struct {
 // TODO: MAYBE CHANGE THESE NAMES
 fn windowProcedure(window_handle: win.HWND, msg: win.UINT, wParam: usize, lParam: isize) callconv(.winapi) isize {
     const WM_SIZE: win.UINT = 0x0005;
+    const WM_CLOSE: win.UINT = 0x0010;
     switch (msg) {
         WM_SIZE => {
-            std.debug.print("HELLO\n", .{});
+            return 0;
+        },
+        WM_CLOSE => {
+            PostQuitMessage(0);
             return 0;
         },
         else => return DefWindowProcW(window_handle, msg, wParam, lParam),
@@ -65,6 +71,7 @@ pub fn wWinMain(hInstance: win.HINSTANCE, hPrevInstance: ?win.HINSTANCE, lpCmdLi
     _ = hPrevInstance;
     _ = lpCmdLine;
     main(hInstance, nShowCmd) catch return 1; // TODO: THIS ONLY MATTERS IF I WERE TO ACTUALLY USE THE ERROR UNIONS, SO USELESS CURRENTLY
+    std.debug.print("END OF PROGRAM", .{});
     return 0;
 }
 
@@ -77,7 +84,9 @@ fn main(hInstance: win.HINSTANCE, nShowCmd: win.INT) !void {
     const WS_THICKFRAME: win.LONG = 0x00040000;
     const WS_MINIMIZEBOX: win.LONG = 0x00020000;
     const WS_MAXIMIZEBOX: win.LONG = 0x00010000;
-    const WS_OVERLAPPEDWINDOW: win.LONG = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX;
+    const WS_OVERLAPPEDWINDOW: win.LONG = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME | WS_MINIMIZEBOX | 
+                                          WS_MAXIMIZEBOX;
+    const CW_USEDEFAULT: win.INT = -2147483648;
     const module_instance: win.HINSTANCE = @ptrCast(hInstance); 
 
     var wc: WNDCLASSEXW = std.mem.zeroes(WNDCLASSEXW);
@@ -87,13 +96,30 @@ fn main(hInstance: win.HINSTANCE, nShowCmd: win.INT) !void {
     wc.lpszClassName = class_name;
 
     _ = RegisterClassExW(&wc);
-    const window_handle: win.HWND = CreateWindowExW(0, class_name, window_text, WS_OVERLAPPEDWINDOW, 100, 100, 800, 600, null, null, module_instance, null) orelse return;
+    // TODO: COULD RETURN ERROR.
+    const window_handle: win.HWND = CreateWindowExW(0, class_name, window_text, WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, 
+                                                    CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, null, null, 
+                                                    module_instance, null) orelse unreachable; 
 
     _ = ShowWindow(window_handle, nShowCmd);
 
     var msg: MSG = std.mem.zeroes(MSG);
-    while (GetMessageW(&msg, null, 0, 0) > 0) {
-        _ = TranslateMessage(&msg);
-        _ = DispatchMessageW(&msg);
+    // TODO: MAKE A BETTER PLACE FOR THESE.
+    const PM_REMOVE: win.UINT = 0x0001;
+    const WM_QUIT: win.UINT = 0x0012;
+    var should_quit: bool = false;
+    while (!should_quit) {
+        // PeekMessageW returns even if there are no messages in the queue,
+        // this is obviously desired in a game as we can not wait to retrieve input for the game to progress.
+        // The while loop ensures all of the messages in the queue are processed by window procedure and then 
+        // removed from the queue (PeekMessageW returns 0 when there are no messages to handle,
+        // PM_REMOVAL ensures removal), 
+        // some messages are created at the moment of the function call as well.
+        while (PeekMessageW(&msg, null, 0, 0, PM_REMOVE) != 0) {
+            if (msg.message == WM_QUIT) should_quit = true;
+            _ = TranslateMessage(&msg);
+            _ = DispatchMessageW(&msg);
+        }
     }
+    
 }
